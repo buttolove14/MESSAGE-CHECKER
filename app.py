@@ -1,7 +1,5 @@
-import requests
-import pandas as pd
 import streamlit as st
-from streamlit_socketio import SocketManager
+import socketio
 from PIL import Image
 from io import BytesIO
 import base64
@@ -18,17 +16,14 @@ selected_date = st.date_input("Select Date")
 
 # Sidebar for connection status
 st.sidebar.subheader("WhatsApp Connection Status")
-
-# Socket.IO connection setup
-socket_manager = SocketManager("https://message-checker.onrender.com")  # Replace with your backend's Socket.IO URL
-
-# Placeholders for QR code and status messages
 qr_placeholder = st.sidebar.empty()
 status_placeholder = st.sidebar.empty()
 
+# Create a Socket.IO client
+sio = socketio.Client()
 
-# Callback for QR code events
-@socket_manager.on("qr")
+# Define event handlers
+@sio.on("qr")
 def handle_qr(data):
     qr_data = data["qr"]
     decoded_qr = base64.b64decode(qr_data.split(",")[1])  # Decode the base64 QR data
@@ -36,19 +31,20 @@ def handle_qr(data):
     qr_placeholder.image(qr_image, caption="Scan this QR code to connect to WhatsApp")
     status_placeholder.info("Waiting for WhatsApp login...")
 
-
-# Callback for ready event
-@socket_manager.on("ready")
+@sio.on("ready")
 def handle_ready(data):
     qr_placeholder.empty()
     status_placeholder.success("WhatsApp is ready!")
 
-
-# Callback for disconnected event
-@socket_manager.on("disconnected")
+@sio.on("disconnected")
 def handle_disconnected(data):
     status_placeholder.error("WhatsApp disconnected. Please refresh and reconnect.")
 
+# Connect to the Socket.IO server
+try:
+    sio.connect("https://message-checker.onrender.com")
+except Exception as e:
+    st.error(f"❌ Could not connect to WebSocket: {e}")
 
 # API function to check messages
 def check_messages_via_api(group_name, check_date):
@@ -72,7 +68,6 @@ def check_messages_via_api(group_name, check_date):
         st.error(f"❌ API Error: {e}")
         return None
 
-
 # Button to check messages
 if st.button("Check Messages"):
     check_date = selected_date.strftime("%Y-%m-%d")
@@ -85,6 +80,3 @@ if st.button("Check Messages"):
         ])
         st.subheader(f"📅 Message Log for {selected_date}")
         st.table(df)
-
-# Start the Socket.IO connection
-socket_manager.connect()
