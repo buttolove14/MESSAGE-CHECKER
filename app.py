@@ -21,10 +21,10 @@ def check_messages_via_node(group_name, check_date):
     check_date_str = str(check_date)
     group_name_str = str(group_name)
 
-    st.write(f"🔄 Running: node check-messages.js \"{check_date_str}\" \"{group_name_str}\"")  # Debugging log
+    st.write(f"🔄 Running: node check.js \"{check_date_str}\" \"{group_name_str}\"")  # Debugging log
 
     process = subprocess.Popen(
-        f'node check-messages.js "{check_date_str}" "{group_name_str}"',
+        f'node check.js "{check_date_str}" "{group_name_str}"',
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, shell=True, encoding="utf-8", errors="replace"
     )
