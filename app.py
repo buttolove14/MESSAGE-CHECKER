@@ -13,11 +13,11 @@ st.write(f"Selected Group: {selected_group}")
 
 # Function to fetch QR code from Node.js API
 def fetch_qr_code():
-    url = "https://your-node-server-url/qr"  # Replace with your Render Node.js URL
+    url = "https://message-checker.onrender.com/qr"  # Use your Render URL
     try:
         response = requests.get(url)
         if response.status_code == 200:
-            return response.text  # If your QR code is text-based (adjust accordingly if image)
+            return response.text  # Assuming QR code is returned as text
         else:
             st.error("❌ Error fetching QR code from Node.js server.")
     except Exception as e:
