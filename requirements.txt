@@ -2,4 +2,5 @@ streamlit==1.42.0
 pandas==2.2.3
 requests==2.32.3
 qrcode[pil]
-socketio
+python-socketio==5.8.0
+websocket-client==1.5.1
