@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 import streamlit as st
-from streamlit_socketio import SocketManager
+import socketio
 from PIL import Image
 from io import BytesIO
 import base64
@@ -19,24 +19,28 @@ selected_date = st.date_input("Select Date")
 # Sidebar for connection status
 st.sidebar.subheader("WhatsApp Connection Status")
 
-# Socket.IO connection setup
-socket_manager = SocketManager("https://message-checker.onrender.com")  # Replace with your backend's Socket.IO URL
+# Socket.IO connection setup using socketio package
+sio = socketio.Client()
 
 # Placeholders for QR code and status messages
 qr_placeholder = st.sidebar.empty()
 status_placeholder = st.sidebar.empty()
 
-
-# Check WebSocket connection
-try:
-    socket_manager.connect()
+# Socket.IO event for handling QR code
+@sio.event
+def connect():
     st.sidebar.success("Connected to WebSocket!")
-except Exception as e:
-    st.sidebar.error(f"❌ WebSocket connection failed: {e}")
 
-# Callback for QR code events
-@socket_manager.on("qr")
-def handle_qr(data):
+@sio.event
+def connect_error(data):
+    st.sidebar.error(f"❌ WebSocket connection failed: {data}")
+
+@sio.event
+def disconnect():
+    st.sidebar.error("❌ Disconnected from WebSocket.")
+
+@sio.event
+def qr(data):
     try:
         qr_data = data["qr"]
         decoded_qr = base64.b64decode(qr_data.split(",")[1])  # Decode the base64 QR data
@@ -46,19 +50,20 @@ def handle_qr(data):
     except Exception as e:
         st.sidebar.error(f"❌ Error displaying QR: {e}")
 
-
-# Callback for ready event
-@socket_manager.on("ready")
-def handle_ready(data):
+@sio.event
+def ready(data):
     qr_placeholder.empty()
     status_placeholder.success("WhatsApp is ready!")
 
-
-# Callback for disconnected event
-@socket_manager.on("disconnected")
-def handle_disconnected(data):
+@sio.event
+def disconnected(data):
     status_placeholder.error("WhatsApp disconnected. Please refresh and reconnect.")
 
+# Connect to WebSocket
+try:
+    sio.connect("https://message-checker.onrender.com")  # Replace with your backend's Socket.IO URL
+except Exception as e:
+    st.sidebar.error(f"❌ Failed to connect to WebSocket: {e}")
 
 # API function to check messages
 def check_messages_via_api(group_name, check_date):
@@ -82,7 +87,6 @@ def check_messages_via_api(group_name, check_date):
         st.error(f"❌ API Error: {e}")
         return None
 
-
 # Button to check messages
 if st.button("Check Messages"):
     check_date = selected_date.strftime("%Y-%m-%d")
@@ -96,6 +100,3 @@ if st.button("Check Messages"):
         } for slot, details in status.items()])
         st.subheader(f"📅 Message Log for {selected_date}")
         st.table(df)
-
-# Start the Socket.IO connection
-socket_manager.connect()
