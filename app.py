@@ -1,7 +1,7 @@
 import requests
 import pandas as pd
 import streamlit as st
-from streamlit_qrcode import qrcode
+import qrcode  # Use qrcode for generating QR codes
 import socketio
 
 st.title("WhatsApp Message Checker")
@@ -35,7 +35,10 @@ def display_qr_code():
     @sio.on("qr")
     def qr_handler(data):
         qr_code = data["qr"]
-        qr_placeholder.image(qr_code, caption="Scan this QR code to connect to WhatsApp")
+
+        # Generate QR code using the qrcode library
+        qr = qrcode.make(qr_code)
+        qr_placeholder.image(qr, caption="Scan this QR code to connect to WhatsApp")
         status_placeholder.info("Waiting for WhatsApp login...")
 
     @sio.on("ready")
