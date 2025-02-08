@@ -1,11 +1,13 @@
 const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
+const socketIO = require('socket.io');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 let client;
+let qrData = null; // Store QR code data for new connections
 
 app.use(express.json());
 
@@ -19,30 +21,34 @@ function initializeWhatsAppClient() {
         }
     });
 
+    // QR Code Generation and Emission
     client.on('qr', async (qr) => {
-        console.log("QR Received: ", qr);
-        qrData = await QRCode.toDataURL(qr);
-        io.emit('qr', { qr: qrData }); // Send QR code to clients via Socket.IO
+        console.log("QR Received");
+        qrData = await QRCode.toDataURL(qr); // Generate base64 QR image
+        io.emit('qr', { qr: qrData }); // Emit QR code to connected clients
     });
 
+    // WhatsApp Ready Event
     client.on('ready', () => {
         console.log("WhatsApp Client is ready!");
+        qrData = null; // Clear QR code data after successful login
         io.emit('ready', { message: "WhatsApp is connected." });
     });
 
+    // WhatsApp Disconnection Event
     client.on('disconnected', () => {
         console.log("WhatsApp Client disconnected.");
-        io.emit('disconnected', { message: "WhatsApp is disconnected." });
-        initializeWhatsAppClient(); // Reinitialize client on disconnect
+        io.emit('disconnected', { message: "WhatsApp is disconnected. Please reconnect." });
+        initializeWhatsAppClient(); // Reinitialize client after disconnect
     });
 
     client.initialize();
 }
 
-// Start Client
+// Start the WhatsApp Client
 initializeWhatsAppClient();
 
-// Add API Endpoint to Check Messages
+// Add API Endpoint for Checking Messages
 app.get('/check-messages', async (req, res) => {
     const { date, group } = req.query;
 
@@ -58,6 +64,7 @@ app.get('/check-messages', async (req, res) => {
             return res.status(404).json({ error: `Group "${group}" not found.` });
         }
 
+        // Time slots to check messages
         const timeSlots = {
             "09:00-10:00": { start: "09:00", end: "09:59" },
             "12:00-13:00": { start: "12:00", end: "12:59" },
@@ -69,37 +76,20 @@ app.get('/check-messages', async (req, res) => {
             messageStatus[slot] = { status: "⚠ No", senders: [] };
         });
 
-        let allMessages = [];
-        let done = false;
-        while (!done) {
-            const messages = await groupChat.fetchMessages({ limit: 200, before: allMessages[0]?.id });
-            allMessages = [...allMessages, ...messages];
-            if (messages.length < 200 || messages.some(msg => moment.utc(msg.timestamp * 1000).format("YYYY-MM-DD") < date)) {
-                done = true;
-            }
-        }
-
+        // Fetch and filter messages
+        const allMessages = await groupChat.fetchMessages({ limit: 200 });
         for (const msg of allMessages) {
-            const msgDate = moment.utc(msg.timestamp * 1000).local().format("YYYY-MM-DD");
-            const msgTime = moment.utc(msg.timestamp * 1000).local().format("HH:mm");
+            const msgDate = new Date(msg.timestamp * 1000).toISOString().split('T')[0];
+            const msgTime = new Date(msg.timestamp * 1000).toTimeString().split(' ')[0].slice(0, 5);
 
             if (msgDate === date) {
                 for (const [slot, range] of Object.entries(timeSlots)) {
                     if (msgTime >= range.start && msgTime <= range.end) {
-                        let senderJID = msg.author || msg.from || "Unknown";
-                        try {
-                            const senderContact = await client.getContactById(senderJID);
-                            let senderName = senderContact.pushname || senderContact.name || senderJID;
-
-                            if (!messageStatus[slot].senders.includes(senderName)) {
-                                messageStatus[slot].senders.push(senderName);
-                            }
-                            messageStatus[slot].status = "✅ Yes";
-                        } catch {
-                            if (!messageStatus[slot].senders.includes(senderJID)) {
-                                messageStatus[slot].senders.push(senderJID);
-                            }
+                        let sender = msg.author || msg.from;
+                        if (!messageStatus[slot].senders.includes(sender)) {
+                            messageStatus[slot].senders.push(sender);
                         }
+                        messageStatus[slot].status = "✅ Yes";
                     }
                 }
             }
@@ -111,24 +101,24 @@ app.get('/check-messages', async (req, res) => {
     }
 });
 
-// Start Express Server
+// Start the Express Server
 const server = app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
 
 // Add WebSocket Support for QR Code
-const io = require('socket.io')(server, {
+const io = socketIO(server, {
     cors: {
         origin: '*',
         methods: ['GET', 'POST']
     }
 });
 
-let qrData = null;
-
+// Socket.IO for Real-Time QR Updates
 io.on('connection', (socket) => {
     console.log("New client connected");
 
+    // Send the QR code to the client if it exists
     if (qrData) {
         socket.emit('qr', { qr: qrData });
     }
